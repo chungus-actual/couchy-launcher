@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.conreo.couchytv.R
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.Icon
@@ -66,7 +67,7 @@ fun StatusBar(
       if (feedLine != null) {
         // fork: the feed line, left edge; it takes the room the right side leaves
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-            FeedLineText(feedLine, if (glass) cluster.padding(vertical = 4.dp) else Modifier)
+            FeedLineText(feedLine, if (glass) cluster else Modifier)
         }
         Spacer(Modifier.width(16.dp))
       }
@@ -128,6 +129,10 @@ fun StatusBar(
  * Fork: the feed line, the weather over the feed's top item (data/FeedLine.kt). Not focusable: it is
  * a reading, not a control. The kicker takes the item's tone: warm for something that needs a person
  * ("needs", "fault"), teal for something happening now ("live"), amber otherwise.
+ *
+ * Two lines in the bar's 44 dp (80 less its 18 dp padding top and bottom) with the panel's own
+ * padding: the theme's line heights (20 + 16 sp) plus a second padding came to 52 and the glass
+ * clipped the descenders, so the line heights are set tight here.
  */
 @Composable
 private fun FeedLineText(h: FeedLine, panel: Modifier) {
@@ -135,7 +140,7 @@ private fun FeedLineText(h: FeedLine, panel: Modifier) {
         if (h.weather.isNotEmpty()) {
             Text(
                 text = h.weather,
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.titleSmall.copy(lineHeight = 17.sp),
                 color = Color.White.copy(alpha = 0.92f),
                 maxLines = 1,
             )
@@ -145,7 +150,7 @@ private fun FeedLineText(h: FeedLine, panel: Modifier) {
                 if (h.kicker.isNotEmpty()) {
                     Text(
                         text = h.kicker,
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.labelMedium.copy(lineHeight = 15.sp),
                         color = when (h.tone) {
                             "needs", "fault" -> Color(0xFFF0A070)
                             "live" -> Color(0xFF7FD6CF)
@@ -157,7 +162,7 @@ private fun FeedLineText(h: FeedLine, panel: Modifier) {
                 }
                 Text(
                     text = h.headline,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodySmall.copy(lineHeight = 15.sp),
                     color = Color.White.copy(alpha = 0.75f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

@@ -14,6 +14,13 @@ Modified in October 2026; everything else is conreo's launcher, and upstream's R
 
 </div>
 
+<img src="docs/img/fork/home.jpg" width="100%" alt="The fork's home screen: the feed line at the top left, the now-playing chip and the clock at the top right, a reel as the wallpaper, the glass dock" />
+
+<img src="docs/img/fork/statusbar.jpg" width="100%" alt="The status bar up close: weather and the top feed item, then the playing track with previous, pause, next and the screensaver button" />
+
+<sub>Captured on an NVIDIA SHIELD TV Pro: a made-up track, the feed from Nightdrop's example server, and a
+generated reel as the wallpaper.</sub>
+
 ## What the fork adds
 
 | | |
@@ -51,7 +58,7 @@ build. APKs are on [Releases](https://github.com/chungus-actual/couchy-launcher/
 
 | Step | How |
 |---|---|
-| Install | `adb install couchy-launcher-1.0.6-fork.1.apk` |
+| Install | `adb install couchy-launcher-1.0.6-fork.2.apk` |
 | Make it Home | Android's home picker, or `adb shell cmd package set-home-activity io.github.chungus_actual.couchy/com.conreo.couchytv.MainActivity` |
 | Now playing | `adb shell cmd notification allow_listener io.github.chungus_actual.couchy/com.conreo.couchytv.MediaListener` (Android lists media sessions only to apps with notification access; nothing reads notifications) |
 | Reels | Settings > Wallpaper > Reels (it asks to read videos), then `adb push clip.mp4 /sdcard/Movies/Reels/`. Nightdrop's [`make_reel.py`](https://github.com/chungus-actual/nightdrop/blob/main/tools/make_reel.py) turns any video into a seamless loop |

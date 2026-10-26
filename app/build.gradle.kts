@@ -15,8 +15,8 @@ android {
         applicationId = (project.findProperty("appId") as String?) ?: "io.github.chungus_actual.couchy"
         minSdk = 21
         targetSdk = 34
-        versionCode = 7
-        versionName = "1.0.6-fork.1"
+        versionCode = 8
+        versionName = "1.0.6-fork.2"
     }
 
     // fork: -Pbake=<dir> builds a folder in as extra assets: a feed.json there ({"url", "ca", "token"},
