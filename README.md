@@ -40,14 +40,10 @@ and reels are files on the box.
 The fork and [Nightdrop](https://github.com/chungus-actual/nightdrop) (a music visualizer and
 screensaver) share a folder and a feed, so Home and the screensaver feel like one thing:
 
-```mermaid
-flowchart LR
-    reels[/"Movies/Reels"/] --> wall["Fork: wallpaper"]
-    reels --> dream["Nightdrop screensaver:<br/>reels when quiet"]
-    feed[("Your feed server")] -->|"/ambient"| line["Fork: feed line"]
-    feed -->|"/ambient, /popfacts"| plate["Nightdrop: plate and pop facts"]
-    chip["Fork: now-playing chip"] -->|"start screensaver"| vis["Nightdrop: visuals, now"]
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/diagrams/fork-and-nightdrop-dark.svg">
+  <img src="docs/img/diagrams/fork-and-nightdrop-light.svg" alt="What the Couchy fork and Nightdrop share: the Movies/Reels folder feeds both the fork wallpaper and the screensaver reels, one feed server feeds the fork feed line and the Nightdrop plate and pop facts, and the now-playing button starts the screensaver, which shows the visuals straight away">
+</picture>
 
 Neither needs the other: without Nightdrop the chip's last button starts whatever screensaver is set.
 
