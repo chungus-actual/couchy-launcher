@@ -45,6 +45,23 @@ object Actions {
         runCatching { am.killBackgroundProcesses(pkg) }
     }
 
+    /**
+     * Fork: the screensaver now, through the system's own "start screensaver" activity (the
+     * now-playing chip's visualizer button: with a music visualizer such as Nightdrop as the
+     * screensaver, the visuals come up at once). Where that activity is missing, the screensaver
+     * settings instead.
+     */
+    fun startScreensaver(context: Context) {
+        val dream = Intent().setComponent(
+            android.content.ComponentName("com.android.systemui", "com.android.systemui.Somnambulator")
+        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        runCatching { context.startActivity(dream) }.onFailure {
+            runCatching {
+                context.startActivity(Intent(Settings.ACTION_DREAM_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+        }
+    }
+
     fun openSystemSettings(context: Context) {
         runCatching { context.startActivity(Intent(Settings.ACTION_SETTINGS)) }
     }

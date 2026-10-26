@@ -10,11 +10,22 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.conreo.couchytv"
+        // fork: its own id, so it installs beside the upstream build (signed by its author) instead
+        // of replacing it; the code namespace stays com.conreo.couchytv. -PappId=<id> overrides it.
+        applicationId = (project.findProperty("appId") as String?) ?: "io.github.chungus_actual.couchy"
         minSdk = 21
         targetSdk = 34
         versionCode = 7
-        versionName = "1.0.6"
+        versionName = "1.0.6-fork.1"
+    }
+
+    // fork: -Pbake=<dir> builds a folder in as extra assets: a feed.json there ({"url", "ca", "token"},
+    // the CA a file beside it or inline PEM) is the default feed for the status bar's feed line
+    // (data/FeedLine.kt). A feed address set in Settings wins over it.
+    (project.findProperty("bake") as String?)?.let { dir ->
+        val baked = rootProject.file(dir)
+        require(baked.resolve("feed.json").isFile) { "-Pbake: no feed.json in $baked" }
+        sourceSets.getByName("main").assets.srcDir(baked)
     }
 
     // Release signing key, supplied by CI via environment variables (from GitHub

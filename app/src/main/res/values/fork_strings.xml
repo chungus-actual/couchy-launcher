@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fork strings (now playing, reels, feed line, dock teaser). English only for now: the other
+     languages fall back to these until they are translated. -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <string name="fork_np_previous">Previous track</string>
+    <string name="fork_np_play">Play</string>
+    <string name="fork_np_pause">Pause</string>
+    <string name="fork_np_next">Next track</string>
+    <string name="fork_screensaver">Start the screensaver</string>
+    <string name="fork_reels">Reels</string>
+    <string name="fork_reels_sub">Every video in %1$s, one scene at a time</string>
+    <string name="fork_reels_denied">Reels need permission to read videos</string>
+    <string name="fork_scene_length">Scene length</string>
+    <string name="fork_minutes">%1$d min</string>
+    <string name="fork_feed_line">Feed line</string>
+    <string name="fork_feed_line_sub">Weather and the top item from your feed server</string>
+    <string name="fork_feed_address">Feed address</string>
+    <string name="fork_feed_built_in">Built in</string>
+    <string name="fork_feed_none">Not set</string>
+    <string name="fork_dock_peek">Peek at the next row</string>
+    <string name="fork_dock_peek_sub">The tops of the second row under the dock</string>
+</resources>

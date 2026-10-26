@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
+    <!-- Fork: this file is referenced from the manifest now (upstream shipped it unreferenced and
+         allowed cleartext app-wide through usesCleartextTraffic). The base keeps that behaviour, so the
+         built-in aerials stream exactly as before, and a LAN feed server can be plain http. A CA set
+         for the feed is applied in code (data/FeedLine.kt), for that connection only. -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
     <!-- Allow cleartext only for known wallpaper CDNs -->
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">sylvan.apple.com</domain>

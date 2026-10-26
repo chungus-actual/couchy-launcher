@@ -58,7 +58,10 @@ fun AppCard(
     // it, using a short time window that expires on its own (a sticky flag
     // would eat the next legitimate press, since the release is delivered to
     // the menu's window and never comes back to this card).
-    val cardShape = SmoothCornerShape(LocalCornerRadius.current)
+    // fork: remembered per radius; a new shape object on every composition defeated reuse
+    val radius = LocalCornerRadius.current
+    // smoothShape: a smooth-edged clip below Android 13 (see ForkLook.kt)
+    val cardShape = androidx.compose.runtime.remember(radius) { smoothShape(radius) }
     var downAt by remember { mutableLongStateOf(0L) }
     var lastKeyDown by remember { mutableLongStateOf(0L) }
     var longPressAt by remember { mutableLongStateOf(0L) }

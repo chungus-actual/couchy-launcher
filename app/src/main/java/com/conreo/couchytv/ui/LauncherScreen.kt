@@ -84,6 +84,11 @@ import com.conreo.couchytv.data.LAYOUT_GRID
 import com.conreo.couchytv.data.LauncherConfig
 import com.conreo.couchytv.data.NetStatus
 import com.conreo.couchytv.data.networkStatusFlow
+import com.conreo.couchytv.data.nowPlayingFlow
+import com.conreo.couchytv.data.feedLineFlow
+import com.conreo.couchytv.data.feedSource
+import com.conreo.couchytv.data.Reels
+import com.conreo.couchytv.data.REEL_MINUTES
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOn
@@ -282,6 +287,11 @@ fun LauncherApp(rescanTick: Int) {
     // binder calls — keep them off the main thread on the first real frame.
     val net by remember { networkStatusFlow(context).flowOn(Dispatchers.IO) }
         .collectAsStateWithLifecycle(initialValue = NetStatus())
+    // fork: the playing track for the status bar (main thread: the session callbacks post there)
+    val nowPlaying by remember { nowPlayingFlow(context) }.collectAsStateWithLifecycle(initialValue = null)
+    // fork: the feed line (weather + the feed's top item); polled only while visible
+    val feedSrc = remember(config.feedUrl, config.feedCa, config.feedToken) { feedSource(context, config) }
+    val feedLine by remember(feedSrc) { feedLineFlow(feedSrc) }.collectAsStateWithLifecycle(initialValue = null)
 
     // Bump on every ON_RESUME so the clock/date refresh immediately after
     // sleep — they normally only tick on minute boundaries via produceState.
@@ -560,6 +570,36 @@ fun LauncherApp(rescanTick: Int) {
         wallpaperVersion++
     }
 
+    // ----- Fork: reels (Movies/Reels by default). Every file is a SCENE: one loops for
+    // REEL_MINUTES, then another at random, faded through the cover. The timer keeps running while
+    // the launcher is hidden, and a return re-prepares the CURRENT scene (a seamless loop, so
+    // starting it over is invisible). A folder read per pick: a file dropped in joins the next one;
+    // an empty or unreadable folder is looked at again every 15 s (a permission just granted, a
+    // first file copied in). reelSkip moves on at once (a scene that will not play). -----
+    var reelSkip by remember { mutableIntStateOf(0) }
+    val reelMs = REEL_MINUTES[config.reelMinutes.coerceIn(0, REEL_MINUTES.size - 1)] * 60_000L
+    val reelWallpaper by produceState<String?>(
+        initialValue = null,
+        config.useReels, config.reelsDir, reelMs, reelSkip,
+    ) {
+        if (!config.useReels) {
+            value = null
+            return@produceState
+        }
+        while (true) {
+            val reels = withContext(Dispatchers.IO) { Reels.list(config.reelsDir) }
+            if (reels.isEmpty()) {
+                value = null
+            } else {
+                val current = value
+                var next = reels.random()
+                if (reels.size > 1) while (next == current) next = reels.random()
+                value = next
+            }
+            delay(if (reels.isEmpty()) 15_000L else reelMs)
+        }
+    }
+
     // Aerials stream from a CDN. Right after the TV powers on, the network/DNS
     // isn't up yet, so the first clip fails to load — show the gradient instead
     // of a black screen, and retry: quickly once the network reconnects,
@@ -610,7 +650,7 @@ fun LauncherApp(rescanTick: Int) {
                 }
         ) {
             // Wallpaper + readability scrim.
-            // Priority: built-in aerials > local video > photo > preset.
+            // Priority: built-in aerials > reels > local video > photo > preset.
             val videoSpeed = VIDEO_SPEEDS[config.videoSpeed.coerceIn(0, VIDEO_SPEEDS.size - 1)]
             val aerial = aerialWallpaper
             if (aerial != null && net.connected && !aerialError) {
@@ -625,8 +665,18 @@ fun LauncherApp(rescanTick: Int) {
                     onEnded = { wallpaperVersion++ },
                     onError = { aerialError = true },
                 )
+            } else if (reelWallpaper != null) {
+                // fork: a local scene, looped until the scene timer picks the next
+                VideoWallpaper(
+                    uri = reelWallpaper!!,
+                    speed = videoSpeed,
+                    loop = true,
+                    local = true,
+                    coverBrush = presetBrush,
+                    onError = { reelSkip++ },
+                )
             } else if (config.useVideoWallpaper && config.videoUri.isNotEmpty()) {
-                VideoWallpaper(uri = config.videoUri, speed = videoSpeed, loop = true, coverBrush = presetBrush)
+                VideoWallpaper(uri = config.videoUri, speed = videoSpeed, loop = true, local = true, coverBrush = presetBrush)
             } else if (wallpaperSharp != null) {
                 Image(
                     bitmap = wallpaperSharp,
@@ -639,26 +689,26 @@ fun LauncherApp(rescanTick: Int) {
             }
             // Dock-expanded overlay: cheap pseudo-blur (tiny bitmap upscaled)
             // + dim, crossfaded. Works identically on every Android version.
-            val overlayAlpha by animateFloatAsState(
-                targetValue = if (dockExpanded) 1f else 0f,
-                animationSpec = tween(1000),
+            // Fork: AnimatedVisibility fades in its own layer. The old
+            // `if (overlayAlpha > 0.01f)` read the animation during composition, so this whole
+            // block (wallpaper, status bar, dock) recomposed on every frame of the 1 s tween.
+            androidx.compose.animation.AnimatedVisibility(
+                visible = dockExpanded,
+                enter = androidx.compose.animation.fadeIn(tween(1000)),
+                exit = androidx.compose.animation.fadeOut(tween(1000)),
                 label = "dockOverlay",
-            )
-            if (overlayAlpha > 0.01f) {
-                if (wallpaperBlurred != null) {
-                    Image(
-                        bitmap = wallpaperBlurred,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize().graphicsLayer { alpha = overlayAlpha },
-                    )
+            ) {
+                Box(Modifier.fillMaxSize()) {
+                    if (wallpaperBlurred != null) {
+                        Image(
+                            bitmap = wallpaperBlurred,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)))
                 }
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { alpha = overlayAlpha }
-                        .background(Color.Black.copy(alpha = 0.45f))
-                )
             }
             when (config.scrimMode) {
                 4 -> {} // off
@@ -672,7 +722,8 @@ fun LauncherApp(rescanTick: Int) {
             // panels slide in (status bar from the top, dock from the bottom) and
             // the icons fade in after.
             var introShown by remember { mutableStateOf(false) }
-            LaunchedEffect(Unit) { delay(450); introShown = true }
+            // fork: 120 ms, not 450: the D-pad has no focus until the panels are in
+            LaunchedEffect(Unit) { delay(120); introShown = true }
             val introTop by animateFloatAsState(
                 targetValue = if (introShown) 1f else 0f,
                 animationSpec = tween(340, easing = FastOutSlowInEasing),
@@ -687,7 +738,8 @@ fun LauncherApp(rescanTick: Int) {
                 // focusable: Up from the top row slides it back into view.
                 var statusBarFocused by remember { mutableStateOf(false) }
                 val statusBarHeight by animateDpAsState(
-                    targetValue = if (config.showStatusBar || statusBarFocused) 80.dp else 4.dp,
+                    // fork: something playing opens the bar even when it is set to hide
+                    targetValue = if (config.showStatusBar || statusBarFocused || nowPlaying != null) 80.dp else 4.dp,
                     label = "statusBarHeight",
                 )
                 Box(
@@ -715,6 +767,9 @@ fun LauncherApp(rescanTick: Int) {
                         },
                         onNetworkClick = { Actions.openNetworkSettings(context) },
                         onSettingsClick = { showSettings = true },
+                        nowPlaying = nowPlaying,
+                        feedLine = if (config.showFeedLine) feedLine else null,
+                        onScreensaver = { Actions.startScreensaver(context) },
                     )
                 }
                 when (config.layout) {
@@ -1142,21 +1197,28 @@ private fun DockArea(
                     onMenu = onMenu,
                 )
             }
-            // Teaser: the tops of the 2nd row's cards peeking at the bottom edge.
-            // Fades in in SYNC with the dock icons (same delay), so the peek never
-            // appears before row 0 on collapse.
-            AnimatedVisibility(
-                visible = intro && !expanded && rows.size > 1,
-                enter = fadeIn(tween(200, delayMillis = 220)),
-                exit = fadeOut(tween(200)),
-            ) {
-                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(gapUsed)) {
-                        rows.getOrNull(1).orEmpty().forEach { app ->
-                            PeekStrip(app, cardWidth, cardHeight, peekH)
+            if (config.dockPeek) {
+                // Teaser: the tops of the 2nd row's cards peeking at the bottom edge.
+                // Fades in in SYNC with the dock icons (same delay), so the peek never
+                // appears before row 0 on collapse.
+                AnimatedVisibility(
+                    visible = intro && !expanded && rows.size > 1,
+                    enter = fadeIn(tween(200, delayMillis = 220)),
+                    exit = fadeOut(tween(200)),
+                ) {
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(gapUsed)) {
+                            rows.getOrNull(1).orEmpty().forEach { app ->
+                                PeekStrip(app, cardWidth, cardHeight, peekH)
+                            }
                         }
                     }
                 }
+            } else {
+                // Fork: a clean dock, the full list one Down away (Settings > Display turns the
+                // teaser back on). Same height kept, so the dock sits where it did and the grid's
+                // rise (dockRisePx) still lands row 0 on the dock icons.
+                Spacer(Modifier.height(peekH))
             }
         }
 
@@ -1249,12 +1311,11 @@ private fun DockGlassPanel(
                 slideOutVertically(tween(340, easing = FastOutSlowInEasing)) { it },
             modifier = Modifier.matchParentSize(),
         ) {
+            // fork: the glass panel (lit rim, graded body, smooth edge; ForkLook.kt)
             Box(
                 Modifier
                     .fillMaxSize()
-                    .clip(SmoothCornerShape(LocalCornerRadius.current + 14.dp))
-                    .background(Color(0xB3121418))
-                    .background(Color.White.copy(alpha = 0.06f))
+                    .glassPanel(smoothShape(LocalCornerRadius.current + 14.dp))
             )
         }
         // Icons — on OPEN they vanish almost instantly (the rising grid takes
@@ -1363,8 +1424,15 @@ private fun VideoWallpaper(
     coverBrush: Brush,
     onEnded: () -> Unit = {},
     onError: () -> Unit = {},
+    /** fork: a file on this box (reels, your own video), not a stream */
+    local: Boolean = false,
 ) {
     val context = LocalContext.current
+    // fork: the player's listener is attached once per player, so it reads these through
+    // State; captured directly, its log line named the first clip forever
+    val currentUri by androidx.compose.runtime.rememberUpdatedState(uri)
+    val currentOnEnded by androidx.compose.runtime.rememberUpdatedState(onEnded)
+    val currentOnError by androidx.compose.runtime.rememberUpdatedState(onError)
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
 
     // Slow fondu: a clip is hidden until its FIRST FRAME is actually rendered
@@ -1401,10 +1469,20 @@ private fun VideoWallpaper(
                 // 50s buffer just pins ~25-30MB of RAM. Trim it — but keep >=15s
                 // max so a slow TV network doesn't rebuffer visibly on the loop.
                 .setLoadControl(
-                    androidx.media3.exoplayer.DefaultLoadControl.Builder()
-                        .setBufferDurationsMs(10_000, 15_000, 2_500, 5_000)
-                        .setPrioritizeTimeOverSizeThresholds(true)
-                        .build()
+                    if (local) {
+                        // fork: a file on the box needs seconds, not 15 s of 4K in the
+                        // Java heap (about 55 MB at the reels' 30 Mb/s); size wins over time
+                        androidx.media3.exoplayer.DefaultLoadControl.Builder()
+                            .setBufferDurationsMs(2_000, 5_000, 500, 1_000)
+                            .setTargetBufferBytes(24 * 1024 * 1024)
+                            .setPrioritizeTimeOverSizeThresholds(false)
+                            .build()
+                    } else {
+                        androidx.media3.exoplayer.DefaultLoadControl.Builder()
+                            .setBufferDurationsMs(10_000, 15_000, 2_500, 5_000)
+                            .setPrioritizeTimeOverSizeThresholds(true)
+                            .build()
+                    }
                 )
                 .build().apply {
                     repeatMode = if (loop) androidx.media3.common.Player.REPEAT_MODE_ONE
@@ -1454,11 +1532,11 @@ private fun VideoWallpaper(
             override fun onRenderedFirstFrame() { firstFrameGen++ }
             override fun onPlaybackStateChanged(state: Int) {
                 // Clip finished (loop off) → advance to the next aerial.
-                if (state == androidx.media3.common.Player.STATE_ENDED) onEnded()
+                if (state == androidx.media3.common.Player.STATE_ENDED) currentOnEnded()
             }
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                android.util.Log.w("LiteTV", "wallpaper play error ${error.errorCodeName}: $uri")
-                onError()
+                android.util.Log.w("LiteTV", "wallpaper play error ${error.errorCodeName}: $currentUri")
+                currentOnError()
             }
         }
         p.addListener(listener)

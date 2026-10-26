@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.conreo.couchytv.R
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -75,7 +76,28 @@ data class LauncherConfig(
     val language: String = "",
     /** 0 = carousel (fixed selection), 1 = grid, 2 = dock */
     val layout: Int = 2, // Dock
+    // ----- fork -----
+    /** Reels: every video in [reelsDir] (under shared storage) is a SCENE, looped for
+     *  [reelMinutes], then another at random. On by default; an empty or unreadable folder falls
+     *  through to the next wallpaper source. */
+    val useReels: Boolean = true,
+    val reelsDir: String = "Movies/Reels",
+    /** minutes per scene: index into REEL_MINUTES */
+    val reelMinutes: Int = 0,
+    /** The feed line at the left of the status bar: the weather and the feed's top item. */
+    val showFeedLine: Boolean = true,
+    /** Feed server base URL (GET <feedUrl>/ambient); empty = the one built in with -Pbake, if any. */
+    val feedUrl: String = "",
+    /** A CA (PEM text) to trust for the feed instead of the system store. */
+    val feedCa: String = "",
+    /** Sent as `Authorization: Bearer <feedToken>` when set. */
+    val feedToken: String = "",
+    /** The tops of the second row peeking under the dock (upstream's look). Off: a clean dock. */
+    val dockPeek: Boolean = false,
 )
+
+/** fork: how long one reel scene plays before the next. */
+val REEL_MINUTES = listOf(5, 10, 15, 30)
 
 const val LAYOUT_CAROUSEL = 0
 const val LAYOUT_GRID = 1
@@ -102,7 +124,7 @@ class ConfigStore(private val context: Context) {
         prefs[KEY_CONFIG]?.let {
             runCatching { json.decodeFromString<LauncherConfig>(it) }.getOrNull()
         } ?: LauncherConfig(categories = defaultCategories(context))
-    }
+    }.flowOn(kotlinx.coroutines.Dispatchers.Default)   // fork: the JSON decode off the main thread
 
     private fun defaultCategories(ctx: Context) = listOf(
         CategoryCfg("streaming", ctx.getString(R.string.cat_streaming)),

@@ -24,6 +24,14 @@ private fun icon(name: String, d: String): ImageVector =
 
 object AppIcons {
     val Play by lazy { icon("Play", "M8 5v14l11-7z") }
+    // fork: the now-playing chip's transport
+    val Pause by lazy { icon("Pause", "M6 19h4V5H6v14zm8-14v14h4V5h-4z") }
+    // absolute M after the z: Compose measures a relative m from the last point, not the subpath start,
+    // which drew the triangle half off the icon
+    val Previous by lazy { icon("Previous", "M6 6h2v12H6zM9.5 12l8.5 6V6z") }
+    val Next by lazy { icon("Next", "M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z") }
+    // the equalizer bars: start the screensaver (absolute M after every z, see Previous)
+    val Visualizer by lazy { icon("Visualizer", "M7 18h2V6H7zM11 22h2V2h-2zM3 14h2v-4H3zM15 18h2V6h-2zM19 10v4h2v-4z") }
     val Bolt by lazy {
         icon("Bolt", "M11 21h-1l1-7H7.5c-.58 0-.57-.32-.38-.66.19-.34.05-.08.07-.12C8.48 10.94 10.42 7.54 13 3h1l-1 7h3.5c.49 0 .56.33.47.51l-.07.15C12.96 17.55 11 21 11 21z")
     }

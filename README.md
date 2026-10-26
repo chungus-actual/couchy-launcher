@@ -1,3 +1,98 @@
+<div align="center">
+
+# Couchy Launcher, chungus-actual fork
+
+**[Couchy Launcher](https://github.com/conreo/couchy-launcher) 1.0.6, plus what a TV that plays music needs.**
+
+A now-playing chip with real transport controls, a wallpaper made of your own looping videos, a line
+of household news in the status bar, a cleaner dock, and smoother edges on older Android TV boxes.
+Modified in October 2026; everything else is conreo's launcher, and upstream's README follows below.
+
+![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue)
+![Fork of Couchy 1.0.6](https://img.shields.io/badge/fork%20of-Couchy%201.0.6-orange)
+![Android TV 5+](https://img.shields.io/badge/Android%20TV-5%2B-3DDC84?logo=android&logoColor=white)
+
+</div>
+
+## What the fork adds
+
+| | |
+|---|---|
+| **Now playing** | A chip in the status bar while anything plays: cover, title, artist, previous / play-pause / next (skips only when the app offers them), and a button that starts the screensaver. It stays 10 minutes after a pause so you can resume from Home, and opens the status bar even when that is set to hide. D-pad Up from the apps reaches it |
+| **Reels** | A wallpaper source: every video in a folder (`Movies/Reels`) is a scene, looped for 5, 10, 15 or 30 minutes, then another at random, faded through the cover. Drop a file in and it joins the next pick. Local files get a 2 to 5 s buffer instead of the 15 s a stream needs, so a 4K reel does not pin 55 MB of heap |
+| **Feed line** | The weather and the top item from a feed server you run, at the left of the status bar, coloured by its tone. The same feed as [Nightdrop](https://github.com/chungus-actual/nightdrop) ([shape](https://github.com/chungus-actual/nightdrop/blob/main/docs/feed.md)), polled once a minute and only while Home is showing |
+| **Clean dock** | The second row no longer peeks under the dock; the full list is one Down away. Settings > Display > Peek at the next row brings it back |
+| **Smooth edges** | Below Android 13 a path clip is not anti-aliased, so the squircle cards, dock and panels had stair-stepped edges. They clip to a rounded rectangle there, banners are mipmapped, and the glass is redrawn: a graded body and a lit rim |
+| **Fixes** | Lossless PNG icon cache below API 29 (WEBP at 100 is lossy there); banner presence read from resource ids instead of decoding every banner on cold start; one rescan per app update instead of two; the dock overlay no longer recomposes the whole screen on every frame of its fade; config decoded off the main thread; a 120 ms intro instead of 450; Media3 in the baseline profile |
+
+Out of the box the fork still makes no network requests: the feed line needs an address you give it,
+and reels are files on the box.
+
+## With Nightdrop
+
+The fork and [Nightdrop](https://github.com/chungus-actual/nightdrop) (a music visualizer and
+screensaver) share a folder and a feed, so Home and the screensaver feel like one thing:
+
+```mermaid
+flowchart LR
+    reels[/"Movies/Reels"/] --> wall["Fork: wallpaper"]
+    reels --> dream["Nightdrop screensaver:<br/>reels when quiet"]
+    feed[("Your feed server")] -->|"/ambient"| line["Fork: feed line"]
+    feed -->|"/ambient, /popfacts"| plate["Nightdrop: plate and pop facts"]
+    chip["Fork: now-playing chip"] -->|"start screensaver"| vis["Nightdrop: visuals, now"]
+```
+
+Neither needs the other: without Nightdrop the chip's last button starts whatever screensaver is set.
+
+## Install the fork
+
+It has its own package id (`io.github.chungus_actual.couchy`), so it installs beside upstream's
+build. APKs are on [Releases](https://github.com/chungus-actual/couchy-launcher/releases).
+
+| Step | How |
+|---|---|
+| Install | `adb install couchy-launcher-1.0.6-fork.1.apk` |
+| Make it Home | Android's home picker, or `adb shell cmd package set-home-activity io.github.chungus_actual.couchy/com.conreo.couchytv.MainActivity` |
+| Now playing | `adb shell cmd notification allow_listener io.github.chungus_actual.couchy/com.conreo.couchytv.MediaListener` (Android lists media sessions only to apps with notification access; nothing reads notifications) |
+| Reels | Settings > Wallpaper > Reels (it asks to read videos), then `adb push clip.mp4 /sdcard/Movies/Reels/`. Nightdrop's [`make_reel.py`](https://github.com/chungus-actual/nightdrop/blob/main/tools/make_reel.py) turns any video into a seamless loop |
+| Feed line | Settings > Status bar > Feed address, e.g. `http://192.0.2.10:8891` |
+
+For a bearer token or your own CA: Settings > Launcher settings > Save configuration, edit the three
+`feed` keys in `Downloads/CouchyBackup.json` on the box, then Load configuration.
+
+```json
+{
+  "feedUrl": "https://192.0.2.10:8891",
+  "feedToken": "",
+  "feedCa": "-----BEGIN CERTIFICATE-----\nMIID...\n-----END CERTIFICATE-----\n"
+}
+```
+
+With `feedCa` set, that CA is the only one trusted for the feed. The other new keys are `useReels`,
+`reelsDir`, `reelMinutes`, `showFeedLine` and `dockPeek`.
+
+## Build the fork
+
+```sh
+./gradlew assembleRelease -PlocalSign      # debug-signed release build
+```
+
+| Switch | Effect |
+|---|---|
+| `-PappId=<id>` | another package id |
+| `-Pbake=<dir>` | build in a folder holding `feed.json` (`{"url": ..., "ca": "ca.pem", "token": ...}`, the CA a file beside it) as the default feed; an address set in Settings wins |
+| `KEYSTORE_FILE` and friends | upstream's CI signing, unchanged |
+
+The fork's new strings are English only for now; the other 17 languages fall back to them.
+
+## License
+
+GPLv3, like upstream ([LICENSE](LICENSE), [LICENSING.md](LICENSING.md)). The fork's changes are the
+commits on top of upstream's `d3dcd70`. All credit for the launcher itself goes to conreo and the
+Couchy contributors.
+
+---
+
 <a id="english"></a>
 
 <div align="center">

@@ -71,6 +71,10 @@ object AppRepository {
     var memoryCache: List<AppEntry>? = null
         private set
 
+    /** fork: the artwork cache's format by API (see cachedBitmap); in the name, so a change
+     *  of format regenerates instead of reading a stale lossy file */
+    private val CACHE_EXT = if (Build.VERSION.SDK_INT >= 29) "webp" else "png"
+
     // Scanning decodes + lossless-WebP-compresses every banner; on the plain
     // 64-thread Dispatchers.IO that pins every core on a weak TV and starves the
     // render thread, so the breathing loading logo drops frames. Cap it to leave
@@ -121,8 +125,8 @@ object AppRepository {
                 val firstInstall = pkgInfo?.firstInstallTime ?: 0L
                 // Size is baked into the name: a density change (or the earlier
                 // fixed-size caches) regenerates instead of loading a stale size.
-                val bannerName = "$pkg-$stamp-b$bannerW.webp"
-                val iconName = "$pkg-$stamp-i128.webp"
+                val bannerName = "$pkg-$stamp-b$bannerW.$CACHE_EXT"
+                val iconName = "$pkg-$stamp-i128.$CACHE_EXT"
 
                 previous?.get(pkg)?.takeIf { it.stamp == stamp }?.let { cached ->
                     if (cached.banner != null) validCacheNames.add(bannerName)
@@ -133,13 +137,16 @@ object AppRepository {
                 // Show the banner whenever the app ships one (matches the
                 // original behaviour — a size threshold wrongly demoted good
                 // banners whose loaded bitmap is below 320px on this density).
-                val bannerDrawable = runCatching { ai.loadBanner(pm) }.getOrNull()
-                val banner = if (bannerDrawable == null) null else
+                // Fork: whether it ships one is two resource ids on the ActivityInfo, no I/O.
+                // Loading the drawable first (upstream) opened and decoded every app's banner on
+                // every cold start, then threw it away when the cache hit.
+                val hasBanner = ai.banner != 0 || (ai.applicationInfo?.banner ?: 0) != 0
+                val banner = if (!hasBanner) null else
                     cachedBitmap(cacheDir, bannerName, Bitmap.Config.ARGB_8888) {
                         // Full 8-bit, sized to the display (see bannerW above):
                         // crisp for vector/hi-res banners, lean on low-density TVs.
                         runCatching {
-                            bannerDrawable.toBitmap(bannerW, bannerH, Bitmap.Config.ARGB_8888)
+                            ai.loadBanner(pm)?.toBitmap(bannerW, bannerH, Bitmap.Config.ARGB_8888)
                         }.getOrNull()
                     }
                 val icon = if (banner == null) {
@@ -152,6 +159,10 @@ object AppRepository {
                 if (icon != null) validCacheNames.add(iconName)
                 // Upload textures ahead of first draw so the GPU never stalls
                 // mid-frame on a fresh bitmap.
+                // fork: mipmaps. The banner is cached at the biggest card size (540 px at 1080p)
+                // and drawn at ~240: a plain bilinear 2x+ downscale shimmers at the edges.
+                banner?.setHasMipMap(true)
+                icon?.setHasMipMap(true)
                 banner?.prepareToDraw()
                 icon?.prepareToDraw()
 
@@ -203,9 +214,13 @@ object AppRepository {
             f.outputStream().use { out ->
                 if (Build.VERSION.SDK_INT >= 30) {
                     bmp.compress(Bitmap.CompressFormat.WEBP_LOSSLESS, 100, out)
-                } else {
+                } else if (Build.VERSION.SDK_INT >= 29) {
                     @Suppress("DEPRECATION")
                     bmp.compress(Bitmap.CompressFormat.WEBP, 100, out)
+                } else {
+                    // fork: WEBP at 100 is lossless only from API 29; on API 28 it
+                    // was lossy, with colour fringing on banners. PNG is the lossless choice here.
+                    bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
                 }
             }
         }

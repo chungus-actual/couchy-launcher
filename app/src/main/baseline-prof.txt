@@ -33,3 +33,7 @@ HSPLandroidx/datastore/**->**(**)**
 # first launches after install/update don't run them interpreted. ---
 HSPLkotlinx/coroutines/**->**(**)**
 HSPLkotlinx/serialization/**->**(**)**
+
+# --- Fork: Media3 / ExoPlayer, the video wallpaper (with reels as the wallpaper the player is on
+# the startup path of every Home press). ---
+HSPLandroidx/media3/**->**(**)**

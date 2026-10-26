@@ -78,6 +78,7 @@ import com.conreo.couchytv.data.DATE_FORMATS
 import com.conreo.couchytv.data.LAYOUT_DOCK
 import com.conreo.couchytv.data.LAYOUT_GRID
 import com.conreo.couchytv.data.LauncherConfig
+import com.conreo.couchytv.data.feedSource
 import kotlinx.coroutines.Dispatchers
 import androidx.compose.runtime.withFrameNanos
 import kotlinx.coroutines.launch
@@ -107,6 +108,11 @@ fun SettingsSheet(
     val scope = rememberCoroutineScope()
     var screen by remember { mutableStateOf(SettingsScreen.Main) }
 
+    // fork: reels read a folder of videos, so picking them asks for the video permission once
+    val reelsPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> if (!granted) Actions.toast(context, context.getString(R.string.fork_reels_denied)) }
+
     // Same document-picker flow as videos: opens the system file manager,
     // works with USB drives and network storage providers.
     val photoPicker = rememberLauncherForActivityResult(
@@ -126,6 +132,7 @@ fun SettingsSheet(
                         useCustomWallpaper = true,
                         useVideoWallpaper = false,
                         useBuiltinAerials = false,
+                        useReels = false,
                     )
                 }
                 onWallpaperChanged()
@@ -151,6 +158,7 @@ fun SettingsSheet(
                         useVideoWallpaper = true,
                         useCustomWallpaper = false,
                         useBuiltinAerials = false,
+                        useReels = false,
                     )
                 }
             }
@@ -220,9 +228,30 @@ fun SettingsSheet(
                                         useBuiltinAerials = true,
                                         useVideoWallpaper = false,
                                         useCustomWallpaper = false,
+                                        useReels = false,
                                     )
                                 }
                             }
+                        },
+                        onSelectReels = {
+                            if (androidx.core.content.ContextCompat.checkSelfPermission(context, com.conreo.couchytv.data.Reels.PERMISSION) !=
+                                android.content.pm.PackageManager.PERMISSION_GRANTED
+                            ) {
+                                runCatching { reelsPermission.launch(com.conreo.couchytv.data.Reels.PERMISSION) }
+                            }
+                            scope.launch {
+                                store.update {
+                                    it.copy(
+                                        useReels = true,
+                                        useBuiltinAerials = false,
+                                        useVideoWallpaper = false,
+                                        useCustomWallpaper = false,
+                                    )
+                                }
+                            }
+                        },
+                        onSetReelMinutes = { v ->
+                            scope.launch { store.update { it.copy(reelMinutes = v) } }
                         },
                         onSelectBuiltinSource = { v ->
                             scope.launch { store.update { it.copy(builtinSource = v) } }
@@ -241,6 +270,7 @@ fun SettingsSheet(
                                         useCustomWallpaper = false,
                                         useVideoWallpaper = false,
                                         useBuiltinAerials = false,
+                                        useReels = false,
                                     )
                                 }
                             }
@@ -513,6 +543,17 @@ private fun DisplayScreen(
             current = config.layout.coerceIn(0, 2),
             onSelect = { v -> update { it.copy(layout = v) } },
         )
+        // fork: the dock's second-row teaser, upstream's look, off by default
+        if (config.layout == LAYOUT_DOCK) {
+            SectionLabel(stringResource(R.string.section_elements))
+            SettingsItem(
+                selected = false,
+                onClick = { update { it.copy(dockPeek = !it.dockPeek) } },
+                headlineContent = { Text(stringResource(R.string.fork_dock_peek)) },
+                supportingContent = { Text(stringResource(R.string.fork_dock_peek_sub)) },
+                trailingContent = { CheckMark(checked = config.dockPeek) },
+            )
+        }
         // Section names are only drawn in carousel/grid — hide the toggle in dock.
         if (config.layout != LAYOUT_DOCK) {
             SectionLabel(stringResource(R.string.section_elements))
@@ -955,6 +996,41 @@ private fun StatusBarScreen(
             supportingContent = { Text(stringResource(R.string.statusbar_glass_sub)) },
             trailingContent = { CheckMark(checked = config.statusBarGlass) },
         )
+        // fork: the feed line and where it comes from (data/FeedLine.kt)
+        SettingsItem(
+            selected = false,
+            onClick = { scope.launch { store.update { it.copy(showFeedLine = !it.showFeedLine) } } },
+            headlineContent = { Text(stringResource(R.string.fork_feed_line)) },
+            supportingContent = { Text(stringResource(R.string.fork_feed_line_sub)) },
+            trailingContent = { CheckMark(checked = config.showFeedLine) },
+        )
+        val context = LocalContext.current
+        val baked = remember { feedSource(context, config.copy(feedUrl = "")) != null }
+        var editFeed by remember { mutableStateOf(false) }
+        SettingsItem(
+            selected = false,
+            onClick = { editFeed = true },
+            headlineContent = { Text(stringResource(R.string.fork_feed_address)) },
+            supportingContent = {
+                Text(when {
+                    config.feedUrl.isNotBlank() -> config.feedUrl
+                    baked -> stringResource(R.string.fork_feed_built_in)
+                    else -> stringResource(R.string.fork_feed_none)
+                })
+            },
+        )
+        if (editFeed) {
+            RenameDialog(
+                initial = config.feedUrl,
+                title = stringResource(R.string.fork_feed_address),
+                allowBlank = true,
+                onSave = { url ->
+                    scope.launch { store.update { it.copy(feedUrl = url) } }
+                    editFeed = false
+                },
+                onDismiss = { editFeed = false },
+            )
+        }
         SettingsItem(
             selected = false,
             onClick = { scope.launch { store.update { it.copy(h24 = !it.h24) } } },
@@ -1189,12 +1265,15 @@ private fun CategoriesScreen(
     }
 }
 
-/** Pencil dialog: the ONLY place with a text field, so D-pad browsing never lands in an editor. */
+/** Pencil dialog: the ONLY place with a text field, so D-pad browsing never lands in an editor.
+ *  (fork: also the feed address, which may be saved empty to clear it) */
 @Composable
 private fun RenameDialog(
     initial: String,
     onSave: (String) -> Unit,
     onDismiss: () -> Unit,
+    title: String = stringResource(R.string.rename_section),
+    allowBlank: Boolean = false,
 ) {
     var name by remember { mutableStateOf(initial) }
     Dialog(onDismissRequest = onDismiss) {
@@ -1203,7 +1282,7 @@ private fun RenameDialog(
             colors = SurfaceDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
         ) {
             Column(Modifier.width(340.dp).padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text(stringResource(R.string.rename_section), style = MaterialTheme.typography.titleMedium)
+                Text(title, style = MaterialTheme.typography.titleMedium)
                 val f = initialFocus()
                 Box(
                     Modifier
@@ -1219,13 +1298,13 @@ private fun RenameDialog(
                         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                         keyboardActions = KeyboardActions(
-                            onDone = { if (name.isNotBlank()) onSave(name.trim()) }
+                            onDone = { if (allowBlank || name.isNotBlank()) onSave(name.trim()) }
                         ),
                         modifier = Modifier.fillMaxWidth().focusRequester(f),
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Button(onClick = { if (name.isNotBlank()) onSave(name.trim()) }) { Text(stringResource(R.string.save)) }
+                    Button(onClick = { if (allowBlank || name.isNotBlank()) onSave(name.trim()) }) { Text(stringResource(R.string.save)) }
                     Button(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
                 }
             }
@@ -1249,6 +1328,8 @@ private fun WallpaperScreen(
     onPreset: (Int) -> Unit,
     onPickPhoto: () -> Unit,
     onPickVideo: () -> Unit,
+    onSelectReels: () -> Unit = {},
+    onSetReelMinutes: (Int) -> Unit = {},
 ) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
@@ -1260,7 +1341,7 @@ private fun WallpaperScreen(
             modifier = Modifier.padding(bottom = 12.dp, start = 8.dp),
         )
         val f = initialFocus()
-        val staticActive = !config.useBuiltinAerials &&
+        val staticActive = !config.useBuiltinAerials && !config.useReels &&
             !config.useVideoWallpaper && !config.useCustomWallpaper
 
         // Dimming — how much the wallpaper is darkened for icon readability.
@@ -1324,6 +1405,26 @@ private fun WallpaperScreen(
 
         /* ---------------- VIDEO: built-in aerials + your own video ---------------- */
         SectionLabel(stringResource(R.string.wp_section_video))
+
+        // fork: reels, every video in a folder (Movies/Reels by default), one scene at a time
+        SettingsItem(
+            selected = false, onClick = onSelectReels,
+            headlineContent = { Text(stringResource(R.string.fork_reels)) },
+            supportingContent = { Text(stringResource(R.string.fork_reels_sub, config.reelsDir)) },
+            leadingContent = { Icon(AppIcons.Play, contentDescription = null) },
+            trailingContent = { CheckMark(checked = config.useReels) },
+        )
+        if (config.useReels) {
+            val labels = com.conreo.couchytv.data.REEL_MINUTES.map { stringResource(R.string.fork_minutes, it) }
+            val idx = config.reelMinutes.coerceIn(0, labels.size - 1)
+            SelectorRow(
+                label = stringResource(R.string.fork_scene_length),
+                value = labels[idx],
+                steps = labels.size,
+                current = idx,
+                onSelect = { v -> onSetReelMinutes(v) },
+            )
+        }
 
         // Built-in aerial videos
         SettingsItem(

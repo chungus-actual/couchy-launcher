@@ -23,6 +23,10 @@ class MainActivity : ComponentActivity() {
 
     private val packageReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
+            // fork: an update is REMOVED (replacing) then ADDED; scanning on both was two
+            // full scans per update. The ADDED that follows does it.
+            if (intent.action == Intent.ACTION_PACKAGE_REMOVED &&
+                intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)) return
             val pkg = intent.data?.schemeSpecificPart
             // Removals always rescan (the app may be on the grid). For installs and
             // changes, skip the full scan unless the package is actually launchable.
